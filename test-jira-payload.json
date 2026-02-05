@@ -1,0 +1,31 @@
+{
+  "timestamp": 1770238340442,
+  "webhookEvent": "jira:issue_updated",
+  "issue_event_type_name": "issue_generic",
+  "user": {
+    "displayName": "Juan Diego Estrada Perez",
+    "accountId": "712020:b18488a6-08ac-4007-ae02-42338bd8d787"
+  },
+  "issue": {
+    "id": "11534",
+    "key": "ITTIAC-460",
+    "fields": {
+      "summary": "Mi tarea",
+      "status": {
+        "name": "Evaluate",
+        "id": "10093"
+      }
+    }
+  },
+  "changelog": {
+    "id": "26283",
+    "items": [{
+      "field": "status",
+      "fieldtype": "jira",
+      "from": "10078",
+      "fromString": "To Do",
+      "to": "10093",
+      "toString": "Evaluate"
+    }]
+  }
+}
