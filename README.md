@@ -425,7 +425,34 @@ curl -s "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
 
 ## ✅ Testing
 
-### Test 1: Server Health Check
+### Test 1: Verify Jira is sending webhooks (webhook.site)
+
+**RECOMMENDED FIRST STEP** - Confirm Jira sends webhooks before debugging your server:
+
+1. Go to https://webhook.site
+2. Copy your unique URL (e.g., `https://webhook.site/01126c1c-31d3-4d87-89ce-a2c2215e5cb5`)
+3. Update your Jira webhook to point to that URL:
+   ```bash
+   WEBHOOK_ID="1"
+   curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/${WEBHOOK_ID}" \
+     -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
+     -H "Content-Type: application/json" \
+     -d "{
+       \"name\": \"Test Webhook\",
+       \"url\": \"https://webhook.site/your-unique-id\",
+       \"events\": [\"jira:issue_updated\"],
+       \"excludeBody\": false,
+       \"enabled\": true
+     }"
+   ```
+4. Make a change in Jira (update any issue)
+5. **Refresh webhook.site** - you should see the full payload immediately
+6. ✅ **If it works:** Jira is configured correctly, issue is with your server
+7. ❌ **If it doesn't work:** Issue is with Jira webhook configuration (check JQL filter, events, enabled status)
+
+**This method works 100%** and is the fastest way to debug webhook issues.
+
+### Test 2: Server Health Check
 
 ```bash
 curl https://your-server.com/health
@@ -436,7 +463,7 @@ curl https://your-server.com/health
 {"status":"ok","port":"10000"}
 ```
 
-### Test 2: Manual Webhook Trigger
+### Test 3: Manual Webhook Trigger
 
 Update an issue via Jira UI or API:
 
@@ -451,7 +478,7 @@ curl -X PUT "https://${JIRA_DOMAIN}/rest/api/3/issue/PROJ-123" \
   }'
 ```
 
-### Test 3: Check Received Webhooks
+### Test 4: Check Received Webhooks
 
 ```bash
 curl https://your-server.com/webhooks | jq .
@@ -473,7 +500,7 @@ curl https://your-server.com/webhooks | jq .
 }
 ```
 
-### Test 4: Send Test Payload
+### Test 5: Send Test Payload
 
 ```bash
 curl -X POST https://your-server.com/webhook \
@@ -497,17 +524,6 @@ curl -X POST https://your-server.com/webhook \
     }
   }'
 ```
-
-### Test 5: Verify with webhook.site
-
-Temporarily point your webhook to https://webhook.site to debug:
-
-1. Go to https://webhook.site
-2. Copy your unique URL
-3. Update Jira webhook to point to that URL
-4. Make a change in Jira
-5. See the full payload in webhook.site
-6. Update webhook back to your server
 
 ---
 
@@ -534,10 +550,11 @@ Temporarily point your webhook to https://webhook.site to debug:
    - Use `"jira:issue_updated"` for most changes
    - Check you're triggering the right event (e.g., editing vs creating)
 
-4. **Test with webhook.site:**
-   - Update webhook URL to `https://webhook.site/unique-id`
+4. **Test with webhook.site (100% reliable):**
+   - Update webhook URL to `https://webhook.site/unique-id` (get URL from https://webhook.site)
    - Make a change in Jira
-   - If it arrives at webhook.site but not your server, the issue is your server
+   - ✅ **If it arrives at webhook.site:** Jira is working correctly, problem is your server
+   - ❌ **If it doesn't arrive:** Problem is Jira webhook configuration (JQL filter, events, or enabled status)
 
 ### Issue: Server not responding
 
