@@ -1,129 +1,343 @@
-# 📡 Jira Webhook Receiver - Documentation
+# 📡 Jira Webhook Receiver
 
-Complete guide for setting up Jira webhooks and receiving notifications about issue changes.
+Complete guide for setting up Jira webhooks to receive real-time notifications about issue changes.
 
 ## 📋 Table of Contents
 
 1. [Requirements](#requirements)
-2. [Server Setup](#server-setup)
-3. [Create Webhook in Jira (via API)](#create-webhook-in-jira-via-api)
-4. [Create Webhook in Jira (via UI)](#create-webhook-in-jira-via-ui)
-5. [Testing the Webhook](#testing-the-webhook)
-6. [Managing Webhooks](#managing-webhooks)
+2. [Quick Start](#quick-start)
+3. [Server Deployment](#server-deployment)
+4. [Webhook Management via API](#webhook-management-via-api)
+5. [Webhook Management via UI](#webhook-management-via-ui)
+6. [Testing](#testing)
 7. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## 📦 Requirements
 
-- **Jira Cloud** with administrator permissions
-- **Jira API Token** ([Create token](https://id.atlassian.com/manage-profile/security/api-tokens))
+- **Jira Cloud** instance with administrator permissions
+- **Jira API Token** - [Create one here](https://id.atlassian.com/manage-profile/security/api-tokens)
 - **Email** associated with your Jira account
-- **Server** to receive webhooks (can be local with ngrok or cloud-based)
-
-### Required Environment Variables
-
-```bash
-export JIRA_DOMAIN="sandbox-itti-digital.atlassian.net"
-export JIRA_EMAIL="juan.estrada@itti.digital"
-export JIRA_TOKEN="your-token-here"
-export WEBHOOK_URL="https://your-server.com/webhook"
-export PROJECT_KEY="ITTIAC"  # Optional
-```
+- **GitHub** account (for deployment)
+- **Render** account (free) - [Sign up here](https://render.com)
 
 ---
 
-## 🚀 Server Setup
+## 🚀 Quick Start
 
-### Option 1: Local Server (Node.js)
-
-The `webhook-server.js` file included in this repository is a simple Node.js server.
-
-**Start the server locally:**
+### 1. Set Environment Variables
 
 ```bash
+export JIRA_DOMAIN="your-domain.atlassian.net"
+export JIRA_EMAIL="your-email@domain.com"
+export JIRA_TOKEN="your-api-token-here"
+export PROJECT_KEY="YOUR_PROJECT"  # Optional, for filtering
+```
+
+### 2. Deploy Server
+
+**Option A: Deploy to Render (Recommended)**
+
+1. Fork/Clone this repository
+2. Push to your GitHub account
+3. Go to [Render Dashboard](https://dashboard.render.com)
+4. Click "New +" → "Web Service"
+5. Connect your repository
+6. Configure:
+   - **Name:** `jira-webhook-receiver`
+   - **Build Command:** (leave empty)
+   - **Start Command:** `npm start`
+   - **Instance Type:** Free
+7. Click "Create Web Service"
+8. Wait ~2 minutes for deployment
+9. Copy your service URL: `https://your-service.onrender.com`
+
+**Option B: Run Locally**
+
+```bash
+npm install
 npm start
 ```
 
-The server will be available at `http://localhost:3000` with the following endpoints:
+Server will start at `http://localhost:3000`
 
-- `POST /webhook` - Receives webhooks from Jira
-- `GET /health` - Health check endpoint
-- `GET /webhooks` - Query the last 10 received webhooks
+### 3. Keep Render Server Awake (Free Solution)
 
-### Option 2: Deploy to Render (Free)
+Render free tier sleeps after 15 minutes of inactivity. Use UptimeRobot to keep it awake:
 
-1. Push code to GitHub
-2. Go to [Render.com](https://render.com) and create an account
-3. Create a new "Web Service"
-4. Connect your GitHub repository
-5. Configure:
-   - **Build Command:** (empty or `npm install`)
-   - **Start Command:** `npm start`
-   - **Instance Type:** Free
+1. Go to [UptimeRobot.com](https://uptimerobot.com) (free, no credit card)
+2. Sign up
+3. Click "Add New Monitor"
+4. Configure:
+   - **Monitor Type:** HTTP(s)
+   - **Friendly Name:** Jira Webhook Server
+   - **URL:** `https://your-service.onrender.com/health`
+   - **Monitoring Interval:** 5 minutes
+5. Click "Create Monitor"
 
-Render will give you a URL like: `https://your-service.onrender.com`
+Done! Your server will stay awake and responsive.
 
-**⚠️ Important about Render Free:**
-- Server goes to sleep after 15 minutes of inactivity
-- First request may take ~30 seconds (cold start)
+### 4. Create Webhook
 
-### Option 3: Expose Local Server with ngrok
+**Quick command:**
 
 ```bash
-# Install ngrok
-brew install ngrok
-
-# Configure authtoken (get it from https://dashboard.ngrok.com)
-ngrok config add-authtoken YOUR_TOKEN
-
-# Start tunnel
-ngrok http 3000
+curl -X POST "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"Production Webhook\",
+    \"url\": \"https://your-service.onrender.com/webhook\",
+    \"events\": [\"jira:issue_updated\"],
+    \"filters\": {
+      \"issue-related-events-section\": \"project = ${PROJECT_KEY}\"
+    },
+    \"excludeBody\": false,
+    \"enabled\": true
+  }"
 ```
 
-ngrok will give you a public URL that you can use in Jira.
+### 5. Test It
+
+Change any issue in your Jira project and check:
+
+```bash
+curl https://your-service.onrender.com/webhooks
+```
 
 ---
 
-## 🔧 Create Webhook in Jira (via API)
+## 🖥️ Server Deployment
 
-### 1. List Existing Webhooks
+### Endpoints
+
+The server exposes three endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/webhook` | POST | Receives webhooks from Jira |
+| `/health` | GET | Health check (returns `{"status":"ok"}`) |
+| `/webhooks` | GET | Returns last 10 webhooks received |
+
+### Server Features
+
+- **In-memory storage** of last 10 webhooks
+- **Automatic parsing** of Jira payload
+- **Console logging** with formatted output
+- **JSON response** for easy debugging
+
+### Deployment Options
+
+#### Render (Recommended)
+
+**Pros:**
+- Free tier available
+- Automatic deployments from GitHub
+- HTTPS included
+- No credit card required
+
+**Cons:**
+- Sleeps after 15 min (solved with UptimeRobot)
+
+**Setup:**
+1. Connect GitHub repository
+2. Select Node.js environment
+3. Set start command: `npm start`
+4. Deploy
+
+#### Railway
+
+```bash
+railway login
+railway init
+railway up
+```
+
+#### Heroku
+
+```bash
+heroku create jira-webhook-receiver
+git push heroku main
+```
+
+---
+
+## 🔧 Webhook Management via API
+
+### List All Webhooks
 
 ```bash
 curl -s "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
   -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq .
 ```
 
-### 2. Create a New Webhook
+**Example output:**
+```json
+[
+  {
+    "name": "Production Webhook",
+    "url": "https://your-server.com/webhook",
+    "enabled": true,
+    "events": ["jira:issue_updated"],
+    "self": "https://your-domain.atlassian.net/rest/webhooks/1.0/webhook/1"
+  }
+]
+```
+
+### Create Webhook
+
+**Basic webhook (all projects):**
 
 ```bash
 curl -X POST "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
   -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "My ITTIAC Webhook",
+    "name": "My Webhook",
+    "url": "https://your-server.com/webhook",
+    "events": ["jira:issue_updated"],
+    "excludeBody": false,
+    "enabled": true
+  }'
+```
+
+**Webhook with project filter:**
+
+```bash
+curl -X POST "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Project Specific Webhook",
     "url": "https://your-server.com/webhook",
     "events": ["jira:issue_updated"],
     "filters": {
-      "issue-related-events-section": "project = ITTIAC"
+      "issue-related-events-section": "project = MYPROJECT"
     },
     "excludeBody": false,
     "enabled": true
-  }' | jq .
+  }'
 ```
 
-**Important Parameters:**
+**Webhook with status filter:**
 
-- `name`: Descriptive name for the webhook
-- `url`: Your server URL that will receive the webhooks
-- `events`: Array of events to listen for (see [available events](#available-events))
-- `filters.issue-related-events-section`: JQL filter to limit which issues trigger the webhook
-- `excludeBody`: `false` to receive the complete payload
-- `enabled`: `true` to activate the webhook
+```bash
+curl -X POST "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Status Change Webhook",
+    "url": "https://your-server.com/webhook",
+    "events": ["jira:issue_updated"],
+    "filters": {
+      "issue-related-events-section": "project = MYPROJECT AND status changed"
+    },
+    "excludeBody": false,
+    "enabled": true
+  }'
+```
 
-### 3. Available Events
+### Get Webhook Details
 
-Most common events:
+```bash
+# Get webhook ID from list command
+WEBHOOK_ID="1"
+
+curl -s "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/${WEBHOOK_ID}" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq .
+```
+
+### Update Webhook
+
+**Update URL:**
+
+```bash
+WEBHOOK_ID="1"
+
+curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/${WEBHOOK_ID}" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Webhook",
+    "url": "https://new-server.com/webhook",
+    "events": ["jira:issue_updated"],
+    "excludeBody": false,
+    "enabled": true
+  }'
+```
+
+**Update JQL filter:**
+
+```bash
+WEBHOOK_ID="1"
+
+curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/${WEBHOOK_ID}" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Webhook",
+    "url": "https://your-server.com/webhook",
+    "events": ["jira:issue_updated"],
+    "filters": {
+      "issue-related-events-section": "project = NEWPROJECT"
+    },
+    "excludeBody": false,
+    "enabled": true
+  }'
+```
+
+### Enable/Disable Webhook
+
+**Disable:**
+
+```bash
+WEBHOOK_ID="1"
+
+curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/${WEBHOOK_ID}" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Webhook",
+    "url": "https://your-server.com/webhook",
+    "events": ["jira:issue_updated"],
+    "enabled": false
+  }'
+```
+
+**Enable:**
+
+```bash
+WEBHOOK_ID="1"
+
+curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/${WEBHOOK_ID}" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My Webhook",
+    "url": "https://your-server.com/webhook",
+    "events": ["jira:issue_updated"],
+    "enabled": true
+  }'
+```
+
+### Delete Webhook
+
+```bash
+WEBHOOK_ID="1"
+
+curl -X DELETE "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/${WEBHOOK_ID}" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}"
+```
+
+**Verify deletion:**
+
+```bash
+curl -s "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
+  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq .
+```
+
+### Common Event Types
 
 ```json
 {
@@ -133,315 +347,233 @@ Most common events:
     "jira:issue_deleted",
     "comment_created",
     "comment_updated",
-    "comment_deleted"
+    "comment_deleted",
+    "issue_property_set",
+    "issue_property_deleted"
   ]
 }
 ```
 
-### 4. Common JQL Filters
+### JQL Filter Examples
 
 ```bash
-# Only a specific project
-"project = ITTIAC"
+# All issues in project
+"project = MYPROJECT"
 
 # Only status changes
-"project = ITTIAC AND status changed"
+"project = MYPROJECT AND status changed"
 
-# Only changes to a specific status
-"project = ITTIAC AND status changed to Done"
+# Specific status transition
+"project = MYPROJECT AND status changed from \"To Do\" to \"In Progress\""
 
-# Specific status transitions
-"project = ITTIAC AND status changed from \"To Do\" to \"In Progress\""
+# Multiple projects
+"project in (PROJ1, PROJ2)"
 
-# No filter (all issues)
-""
+# Specific issue types
+"project = MYPROJECT AND type = Bug"
+
+# Assigned to specific user
+"project = MYPROJECT AND assignee = currentUser()"
 ```
 
 ---
 
-## 🖱️ Create Webhook in Jira (via UI)
+## 🖱️ Webhook Management via UI
 
-Recommended if you're having issues with the API or need advanced features.
+### Access Webhook Settings
 
-### Step 1: Go to Webhook Configuration
+1. Go to your Jira instance
+2. Click Settings (⚙️) → System
+3. Under "Advanced" section, click **Webhooks**
+4. Or navigate directly to:
+   ```
+   https://your-domain.atlassian.net/plugins/servlet/webhooks
+   ```
 
-```
-https://{your-domain}.atlassian.net/plugins/servlet/webhooks
-```
+### Create Webhook via UI
 
-Or navigate:
-1. Settings (⚙️) → System
-2. In the sidebar, look for "Webhooks" (Advanced section)
+1. Click **"Create a WebHook"**
+2. Fill in the form:
 
-### Step 2: Create Webhook
-
-1. Click on **"Create a WebHook"**
-2. Fill out the form:
-
-   | Field | Value |
-   |-------|-------|
-   | **Name** | `Webhook ITTIAC Production` |
-   | **Status** | ✅ Enabled |
-   | **URL** | `https://your-server.com/webhook` |
-   | **Description** | (optional) |
-   | **Events** | Check: Issue → updated |
-   | **JQL** | `project = ITTIAC` |
-   | **Exclude body** | ❌ DO NOT check |
+| Field | Value | Required |
+|-------|-------|----------|
+| Name | Descriptive name | ✅ Yes |
+| Status | ✅ Enabled | ✅ Yes |
+| URL | `https://your-server.com/webhook` | ✅ Yes |
+| Description | Optional notes | ❌ No |
+| Events | Select "Issue → updated" | ✅ Yes |
+| JQL | `project = MYPROJECT` | ❌ No |
+| Exclude body | ❌ Leave unchecked | ✅ Yes |
 
 3. Click **"Create"**
 
-### Step 3: Verify
+### Edit Webhook via UI
 
-The webhook should appear in the list with:
-- Status: Enabled
-- URL: Your server
-- Events: jira:issue_updated
+1. Go to webhook list
+2. Click on webhook name
+3. Modify fields
+4. Click **"Update"**
+
+### Delete Webhook via UI
+
+1. Go to webhook list
+2. Find your webhook
+3. Click trash icon (🗑️)
+4. Confirm deletion
 
 ---
 
-## ✅ Testing the Webhook
+## ✅ Testing
 
-### Method 1: Manually Change an Issue
-
-1. Go to your project in Jira
-2. Open any issue
-3. Make a change (change status, edit summary, add comment)
-4. Save
-
-### Method 2: Use Jira API
-
-**Change issue summary:**
+### Test 1: Server Health Check
 
 ```bash
-curl -X PUT "https://${JIRA_DOMAIN}/rest/api/3/issue/ITTIAC-459" \
+curl https://your-server.com/health
+```
+
+**Expected response:**
+```json
+{"status":"ok","port":"10000"}
+```
+
+### Test 2: Manual Webhook Trigger
+
+Update an issue via Jira UI or API:
+
+```bash
+curl -X PUT "https://${JIRA_DOMAIN}/rest/api/3/issue/PROJ-123" \
   -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "fields": {
-      "summary": "New issue title"
+      "summary": "Updated summary for testing webhook"
     }
   }'
 ```
 
-**Change issue status:**
+### Test 3: Check Received Webhooks
 
 ```bash
-# First, get available transitions
-curl -s "https://${JIRA_DOMAIN}/rest/api/3/issue/ITTIAC-459/transitions" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq '.transitions[] | {id, name}'
-
-# Then, execute the transition (example: id "21" = In Progress)
-curl -X POST "https://${JIRA_DOMAIN}/rest/api/3/issue/ITTIAC-459/transitions" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "transition": {
-      "id": "21"
-    }
-  }'
+curl https://your-server.com/webhooks | jq .
 ```
 
-### Method 3: Check Received Webhooks
-
-**On the server:**
-
-```bash
-# Query last received webhooks
-curl -s https://your-server.com/webhooks | jq .
-```
-
-**Example response:**
-
+**Expected response:**
 ```json
 {
-  "total": 2,
+  "total": 1,
   "webhooks": [
     {
-      "timestamp": "2026-02-04T12:30:00.000Z",
-      "issueKey": "ITTIAC-459",
-      "summary": "My important task",
+      "timestamp": "2026-02-04T12:00:00.000Z",
+      "issueKey": "PROJ-123",
+      "summary": "Updated summary for testing webhook",
       "status": "In Progress",
-      "changes": "status: \"To Do\" → \"In Progress\""
-    },
-    {
-      "timestamp": "2026-02-04T12:25:00.000Z",
-      "issueKey": "ITTIAC-458",
-      "summary": "Another task",
-      "status": "Done",
-      "changes": "summary: \"Old title\" → \"New title\""
+      "changes": "summary: \"Old title\" → \"Updated summary for testing webhook\""
     }
   ]
 }
 ```
 
-### Method 4: Send Test Webhook
+### Test 4: Send Test Payload
 
 ```bash
 curl -X POST https://your-server.com/webhook \
   -H "Content-Type: application/json" \
+  -H "User-Agent: Atlassian HttpClient" \
   -d '{
     "webhookEvent": "jira:issue_updated",
     "issue": {
-      "key": "ITTIAC-TEST",
+      "key": "TEST-1",
       "fields": {
-        "summary": "Test issue",
-        "status": {"name": "In Progress"}
+        "summary": "Test Issue",
+        "status": {"name": "Done"}
       }
     },
     "changelog": {
       "items": [{
         "field": "status",
-        "fromString": "To Do",
-        "toString": "In Progress"
+        "fromString": "In Progress",
+        "toString": "Done"
       }]
     }
   }'
 ```
 
----
+### Test 5: Verify with webhook.site
 
-## 🔄 Managing Webhooks
+Temporarily point your webhook to https://webhook.site to debug:
 
-### View Webhook Details
-
-```bash
-# First get the webhook ID
-curl -s "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq '.[] | {id: .self | split("/") | last, name, url}'
-
-# Then query details (replace {id} with the obtained ID)
-curl -s "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq .
-```
-
-### Update a Webhook
-
-```bash
-curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Updated Webhook",
-    "url": "https://new-url.com/webhook",
-    "events": ["jira:issue_updated"],
-    "filters": {
-      "issue-related-events-section": "project = ITTIAC"
-    },
-    "excludeBody": false,
-    "enabled": true
-  }' | jq .
-```
-
-### Disable a Webhook
-
-```bash
-curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "My Webhook",
-    "url": "https://your-server.com/webhook",
-    "events": ["jira:issue_updated"],
-    "enabled": false
-  }' | jq .
-```
-
-### Delete a Webhook
-
-```bash
-curl -X DELETE "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}"
-```
+1. Go to https://webhook.site
+2. Copy your unique URL
+3. Update Jira webhook to point to that URL
+4. Make a change in Jira
+5. See the full payload in webhook.site
+6. Update webhook back to your server
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Webhook is not firing
+### Issue: Webhook not firing
 
-**Problem:** You make changes to issues but no webhooks arrive at the server.
+**Symptom:** Changes in Jira don't trigger webhooks
 
 **Solutions:**
 
-1. **Verify the webhook is enabled:**
+1. **Verify webhook is enabled:**
    ```bash
-   curl -s "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
-     -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq '{name, enabled, url}'
+   curl -s "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
+     -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq '.[] | {name, enabled, url}'
    ```
 
-2. **Check the JQL filter:**
-   - If the filter is too restrictive, it might not trigger
-   - Try without a filter or with: `project = YOUR_PROJECT`
+2. **Check JQL filter:**
+   - Filters are case-sensitive
+   - Test your JQL in Jira's issue search first
+   - Remove filter temporarily to test: update webhook without `filters` field
 
-3. **Verify the event matches:**
-   - If you're only listening to `jira:issue_created` but editing, it won't fire
-   - Use `jira:issue_updated` for changes
+3. **Verify event type:**
+   - Use `"jira:issue_updated"` for most changes
+   - Check you're triggering the right event (e.g., editing vs creating)
 
 4. **Test with webhook.site:**
-   - Go to https://webhook.site and copy the unique URL
-   - Update your webhook in Jira with that URL
-   - Make a change to an issue
-   - If it arrives at webhook.site, the problem is with your server
+   - Update webhook URL to `https://webhook.site/unique-id`
+   - Make a change in Jira
+   - If it arrives at webhook.site but not your server, the issue is your server
 
-### Server is not responding
+### Issue: Server not responding
 
-**Problem:** Jira sends webhooks but your server doesn't receive them.
+**Symptom:** Webhooks sent by Jira but server doesn't receive them
 
 **Solutions:**
 
-1. **Verify the server is running:**
+1. **Check server is running:**
    ```bash
    curl https://your-server.com/health
    ```
 
-2. **If using Render Free, wake up the server first:**
-   ```bash
-   # Make a health request to wake up the server
-   curl https://your-server.com/health
+   If it returns 404 or times out, server is down.
 
-   # Wait 10 seconds
-   sleep 10
+2. **For Render:** Check if server is sleeping
+   - Free tier sleeps after 15 min of inactivity
+   - Solution: Set up UptimeRobot (see Quick Start section)
 
-   # Then make the change in Jira
-   ```
+3. **Check server logs:**
+   - Render: Dashboard → Service → Logs tab
+   - Local: Check terminal output
 
-3. **If using ngrok, verify the tunnel is active:**
-   ```bash
-   # Check the ngrok dashboard
-   open http://localhost:4040
-   ```
+4. **Verify URL is correct:**
+   - Must include `/webhook` path: `https://your-server.com/webhook`
+   - Must be `https://` not `http://`
 
-### Cannot create webhooks via API
+### Issue: Webhook arrives but payload is empty
 
-**Problem:** You receive 401, 403, or 404 errors when creating webhooks.
-
-**Solutions:**
-
-1. **Verify your credentials:**
-   ```bash
-   # Test by getting your profile information
-   curl -s "https://${JIRA_DOMAIN}/rest/api/3/myself" \
-     -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq .
-   ```
-
-2. **Verify you have administrator permissions:**
-   - Webhooks require Jira administrator permissions
-   - Contact your administrator if you don't have access
-
-3. **Use the UI instead:**
-   - If the API doesn't work, create the webhook manually from:
-   - `https://{your-domain}.atlassian.net/plugins/servlet/webhooks`
-
-### Webhooks arrive but payload is empty
-
-**Problem:** You receive notifications but without issue data.
+**Symptom:** Server receives requests but no data
 
 **Solution:**
 
-Make sure `excludeBody` is set to `false`:
+Ensure `excludeBody` is set to `false`:
 
 ```bash
-curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
+curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/1" \
   -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -453,7 +585,84 @@ curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
   }'
 ```
 
-### Example of Complete Jira Payload
+### Issue: 401 Unauthorized when managing webhooks
+
+**Symptom:** API returns 401 error
+
+**Solutions:**
+
+1. **Verify credentials:**
+   ```bash
+   curl -s "https://${JIRA_DOMAIN}/rest/api/3/myself" \
+     -u "${JIRA_EMAIL}:${JIRA_TOKEN}" | jq .
+   ```
+
+   Should return your user info. If not, regenerate API token.
+
+2. **Check permissions:**
+   - Webhooks require Jira administrator permissions
+   - Contact your Jira admin if you don't have access
+
+3. **Verify API token:**
+   - Token must be from: https://id.atlassian.com/manage-profile/security/api-tokens
+   - Token should start with `ATATT3x...`
+
+### Issue: JQL filter not working
+
+**Symptom:** Webhook fires for wrong issues or doesn't fire at all
+
+**Solutions:**
+
+1. **Test JQL in Jira:**
+   - Go to Issues → Search for issues
+   - Enter your JQL
+   - Verify it returns expected results
+
+2. **Common JQL mistakes:**
+   - Case sensitivity: `Status` vs `status`
+   - Quotes: Use `\"` in API calls
+   - Spaces: `status changed` not `status  changed`
+
+3. **Simplify filter:**
+   - Start with: `project = MYPROJECT`
+   - Add conditions incrementally
+   - Test after each change
+
+### Issue: Too many webhooks
+
+**Symptom:** Server receiving webhooks for unwanted events
+
+**Solutions:**
+
+1. **Add project filter:**
+   ```json
+   {
+     "filters": {
+       "issue-related-events-section": "project = MYPROJECT"
+     }
+   }
+   ```
+
+2. **Filter by status changes only:**
+   ```json
+   {
+     "filters": {
+       "issue-related-events-section": "project = MYPROJECT AND status changed"
+     }
+   }
+   ```
+
+3. **Use specific events:**
+   ```json
+   {
+     "events": ["jira:issue_updated"]
+   }
+   ```
+   Instead of multiple event types.
+
+### Example Jira Webhook Payload
+
+When Jira sends a webhook, this is what your server receives:
 
 ```json
 {
@@ -461,33 +670,25 @@ curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
   "webhookEvent": "jira:issue_updated",
   "issue_event_type_name": "issue_generic",
   "user": {
-    "self": "https://sandbox-itti-digital.atlassian.net/rest/api/3/user?accountId=...",
-    "accountId": "...",
-    "displayName": "Juan Estrada",
-    "emailAddress": "juan.estrada@itti.digital"
+    "displayName": "John Doe",
+    "accountId": "557058:f58131cb-b67d-43c7-b30d-6b58d40bd077",
+    "emailAddress": "john@example.com"
   },
   "issue": {
-    "id": "10459",
-    "self": "https://sandbox-itti-digital.atlassian.net/rest/api/3/issue/10459",
-    "key": "ITTIAC-459",
+    "id": "10001",
+    "key": "PROJ-123",
     "fields": {
-      "summary": "My important task",
+      "summary": "Fix login bug",
       "status": {
-        "self": "https://sandbox-itti-digital.atlassian.net/rest/api/3/status/10001",
-        "id": "10001",
         "name": "In Progress",
-        "statusCategory": {
-          "id": 4,
-          "key": "indeterminate",
-          "name": "In Progress"
-        }
+        "id": "3"
       },
       "assignee": {
-        "displayName": "Juan Estrada",
-        "emailAddress": "juan.estrada@itti.digital"
+        "displayName": "Jane Smith",
+        "emailAddress": "jane@example.com"
       },
       "created": "2026-01-15T10:00:00.000-0300",
-      "updated": "2026-02-04T17:36:00.000-0300"
+      "updated": "2026-02-04T14:30:00.000-0300"
     }
   },
   "changelog": {
@@ -511,86 +712,33 @@ curl -X PUT "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook/{id}" \
 
 - [Jira Webhooks API Documentation](https://developer.atlassian.com/cloud/jira/platform/webhooks/)
 - [Jira REST API Documentation](https://developer.atlassian.com/cloud/jira/platform/rest/v3/)
-- [Create API Token in Jira](https://id.atlassian.com/manage-profile/security/api-tokens)
-- [JQL (Jira Query Language)](https://support.atlassian.com/jira-software-cloud/docs/what-is-advanced-searching-in-jira-cloud/)
+- [JQL (Jira Query Language) Guide](https://support.atlassian.com/jira-software-cloud/docs/what-is-advanced-searching-in-jira-cloud/)
+- [Render Documentation](https://render.com/docs)
+- [UptimeRobot Documentation](https://uptimerobot.com/help)
 
 ---
 
 ## 📝 Automated Setup Script
 
-The included `setup-jira-webhook.sh` file automates webhook creation:
+The `setup-jira-webhook.sh` script automates webhook creation:
 
 ```bash
-# Configure environment variables
-export JIRA_DOMAIN="sandbox-itti-digital.atlassian.net"
-export JIRA_EMAIL="juan.estrada@itti.digital"
+#!/bin/bash
+# Configure variables
+export JIRA_DOMAIN="your-domain.atlassian.net"
+export JIRA_EMAIL="your-email@domain.com"
 export JIRA_TOKEN="your-token"
 export WEBHOOK_URL="https://your-server.com/webhook"
-export PROJECT_KEY="ITTIAC"
+export PROJECT_KEY="MYPROJECT"
 
-# Execute script
+# Run script
 chmod +x setup-jira-webhook.sh
 ./setup-jira-webhook.sh
 ```
 
 ---
 
-## 🎯 Complete Example: Zero to Hero
-
-```bash
-# 1. Configure variables
-export JIRA_DOMAIN="sandbox-itti-digital.atlassian.net"
-export JIRA_EMAIL="juan.estrada@itti.digital"
-export JIRA_TOKEN="ATATT3xFf..."
-export PROJECT_KEY="ITTIAC"
-
-# 2. Start local server
-npm start &
-
-# 3. Expose with ngrok
-ngrok http 3000 &
-sleep 3
-
-# 4. Get ngrok URL
-WEBHOOK_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')/webhook
-echo "Webhook URL: $WEBHOOK_URL"
-
-# 5. Create webhook in Jira
-curl -X POST "https://${JIRA_DOMAIN}/rest/webhooks/1.0/webhook" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"name\": \"Auto Webhook $(date +%Y%m%d%H%M%S)\",
-    \"url\": \"${WEBHOOK_URL}\",
-    \"events\": [\"jira:issue_updated\"],
-    \"filters\": {
-      \"issue-related-events-section\": \"project = ${PROJECT_KEY}\"
-    },
-    \"excludeBody\": false,
-    \"enabled\": true
-  }" | jq .
-
-# 6. Test by changing an issue
-curl -X PUT "https://${JIRA_DOMAIN}/rest/api/3/issue/ITTIAC-459" \
-  -u "${JIRA_EMAIL}:${JIRA_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "fields": {
-      "summary": "Webhook Test '$(date +%s)'"
-    }
-  }'
-
-# 7. View received webhooks (wait 5 seconds)
-sleep 5
-curl -s http://localhost:3000/webhooks | jq .
-```
-
----
-
 **Author:** Juan Estrada (juan.estrada@itti.digital)
 **Project:** Jira Webhook POC
+**Repository:** https://github.com/juan-estrada-itti/webhook_poc
 **Date:** February 2026
-
----
-
-🤖 Generated with help from [Claude Code](https://claude.com/claude-code)
