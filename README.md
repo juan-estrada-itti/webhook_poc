@@ -2,6 +2,8 @@
 
 Complete guide for setting up Jira webhooks to receive real-time notifications about issue changes.
 
+🌐 **[Versión en Español](README.es.md)**
+
 ## 📋 Table of Contents
 
 1. [Requirements](#requirements)
